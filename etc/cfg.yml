@@ -1,0 +1,14 @@
+env: dev
+log_level: 0
+log_file: ./logs/monitor.log
+
+services:
+  - name: "g1"
+    type: "tcp"
+    enable: true
+    listen_addr: "127.0.0.1:1080"
+    outgoing_addr: ""
+    auth:
+      enable: false
+      user: hello
+      pass: world
