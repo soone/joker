@@ -2,7 +2,6 @@ package socks5
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
@@ -144,12 +143,6 @@ func (s *Socks5Service) connectAndForward(client net.Conn) error {
 	}
 
 	defer dstConn.Close()
-
-	if dstPort == 443 {
-		dstConn = tls.Client(dstConn, &tls.Config{
-			InsecureSkipVerify: true,
-		})
-	}
 
 	client.Write([]byte{0x05, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00})
 
