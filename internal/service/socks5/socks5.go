@@ -2,6 +2,7 @@ package socks5
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
@@ -101,14 +102,14 @@ func (s *Socks5Service) connectAndForward(client net.Conn) error {
 
 	atyp := buf[3]
 
-	var dstAddr string
+	var dstAddr net.IP
 	switch atyp {
 	case 0x01:
 		if n < 4+net.IPv4len {
 			return fmt.Errorf("[0x109]invalid socks5 protocol")
 		}
 
-		dstAddr = net.IP(buf[4 : 4+net.IPv4len]).String()
+		dstAddr = net.IP(buf[4 : 4+net.IPv4len])
 	case 0x03:
 		if n < 5 {
 			return fmt.Errorf("[0x115]invalid socks5 protocol")
@@ -118,22 +119,32 @@ func (s *Socks5Service) connectAndForward(client net.Conn) error {
 		if n < 5+addrLen+2 {
 			return fmt.Errorf("[0x120]invalid socks5 protocol")
 		}
-		dstAddr = string(buf[5 : 5+addrLen])
+		// dstAddr = string(buf[5 : 5+addrLen])
+		domain := string(buf[5 : n-2])
+		ipAddr, err := net.ResolveIPAddr("ip", domain)
+		if err != nil {
+			return fmt.Errorf("[0x126]invalid socks5 protocol")
+		}
+
+		dstAddr = ipAddr.IP
 	case 0x04:
 		if n < 4+net.IPv6len {
 			return fmt.Errorf("[0x125]invalid socks5 protocol")
 		}
-		dstAddr = net.IP(buf[4 : 4+net.IPv6len]).String()
+		dstAddr = net.IP(buf[4 : 4+net.IPv6len])
 	default:
 		return fmt.Errorf("[0x129]invalid socks5 protocol")
 	}
 
-	dstPort := int(buf[n-2])<<8 + int(buf[n-1])
-	// dstPort := binary.BigEndian.Uint16(buf[:2])
-	clog.Logx.Debugf("dstAddr: %s, dstPort: %d", dstAddr, dstPort)
+	// dstPort := int(buf[n-2])<<8 + int(buf[n-1])
+	dstPort := binary.BigEndian.Uint16(buf[n-2 : n])
+	clog.Logx.Debugf("dstAddr: %s, dstPort: %d, outgoingAddr: %s", dstAddr.String(), dstPort, s.srvCfg.OutgoingAddr)
+
+	rawAddr := &net.TCPAddr{IP: dstAddr, Port: int(dstPort)}
+
 	var dstConn net.Conn
 	if s.srvCfg.OutgoingAddr != "" {
-		dstConn, err = net.DialTCP("tcp", &net.TCPAddr{IP: net.ParseIP(s.srvCfg.OutgoingAddr)}, &net.TCPAddr{IP: net.ParseIP(dstAddr), Port: dstPort})
+		dstConn, err = net.DialTCP("tcp", &net.TCPAddr{IP: net.ParseIP(s.srvCfg.OutgoingAddr)}, rawAddr)
 	} else {
 		dstConn, err = net.Dial("tcp", fmt.Sprintf("%s:%d", dstAddr, dstPort))
 	}
